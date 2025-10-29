@@ -1,0 +1,41 @@
+version: "3.8"
+services:
+  nifi:
+    image: apache/nifi:latest
+    container_name: nifi
+    deploy:
+      replicas: 1
+    env_file:
+      - ./.env
+    environment:
+      NIFI_AUTHENTICATION_STRATEGY: "single-user"
+      SINGLE_USER_CREDENTIALS_USERNAME: nifi
+      SINGLE_USER_CREDENTIALS_PASSWORD: nifinifinifinifi
+    volumes:
+      - $PWD/lib:/opt/nifi/nifi-current/javall
+      - nifi-vol:/opt/nifi/nifi-current
+    ports:
+      - "8083:8080"
+      - "8181:8181"
+      - "8443:8443"
+      - "9090:9090" # Port for pushing data to NiFi
+      - "9091:9091" # Port for pulling data to NiFi
+      - "10001:10000"
+
+  transactional-db:
+    image: postgres:latest
+    container_name: transactional-db
+    deploy:
+      replicas: 1
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5440:5432"
+    volumes:
+      - transactional-db-data:/var/lib/postgresql/data
+
+volumes:
+  transactional-db-data:
+  nifi-vol:
