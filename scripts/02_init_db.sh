@@ -1,4 +1,5 @@
 #!/bin/bash
+
 CREATE_TABLE_STATEMENT="CREATE TABLE IF NOT EXISTS metrics (
     id SERIAL PRIMARY KEY,
     metric_id VARCHAR(100) NOT NULL,

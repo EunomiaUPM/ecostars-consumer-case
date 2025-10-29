@@ -36,6 +36,16 @@ services:
     volumes:
       - transactional-db-data:/var/lib/postgresql/data
 
+  metabase:
+    image: metabase/metabase:latest
+    container_name: metabase
+    deploy:
+      replicas: 1
+    ports:
+      - "3000:3000"
+    depends_on:
+      - transactional-db
+
 volumes:
   transactional-db-data:
   nifi-vol:

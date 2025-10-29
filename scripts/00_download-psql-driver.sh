@@ -1,4 +1,5 @@
 #!/bin/bash
+
 VERSION=42.7.8
 URL=https://jdbc.postgresql.org/download/postgresql-$VERSION.jar
 
