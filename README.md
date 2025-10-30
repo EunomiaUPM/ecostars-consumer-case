@@ -13,7 +13,7 @@ The architecture is strategically bifurcated into two primary operational branch
 
 Both data streams converge into a unified persistence layer—a transactional database—which subsequently feeds a business intelligence and analytics platform (Metabase) for reporting, monitoring, and insight generation.
 
-### 2. Architectural Branches
+## 2. Architectural Branches
 
 ### 2.1. PUSH Model: Asynchronous Data Ingestion
 
@@ -79,3 +79,9 @@ Metabase is the user-facing component of the architecture, democratizing data ac
   - **Data Modeling:** A lightweight semantic layer allows administrators to enhance the raw database schema. This involves hiding irrelevant columns, creating user-friendly "Segments" (e.g., "Active Providers"), and defining "Metrics" (e.g., "Average Update Frequency").
   - **Interactive Dashboards:** Users can combine multiple "Questions" into comprehensive, auto-refreshing dashboards to monitor Key Performance Indicators (KPIs) of the data space integration.
   - **Alerts & Pulses:** Automated alerts can be configured to notify stakeholders via email or Slack when certain data thresholds are met (e.g., "Alert me if no data is received from the PUSH endpoint for 2 hours").
+
+---
+
+## 4, Deployment
+
+Coming soon, but in the meanwhile, check out `/scripts` folder and feel free to run them all.
