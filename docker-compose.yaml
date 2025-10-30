@@ -10,17 +10,17 @@ services:
     environment:
       NIFI_AUTHENTICATION_STRATEGY: "single-user"
       SINGLE_USER_CREDENTIALS_USERNAME: nifi
-      SINGLE_USER_CREDENTIALS_PASSWORD: nifinifinifinifi
+      SINGLE_USER_CREDENTIALS_PASSWORD: nifinifinifinifi # pass must be at least 12 characters
     volumes:
-      - $PWD/lib:/opt/nifi/nifi-current/javall
-      - nifi-vol:/opt/nifi/nifi-current
+      - $PWD/lib:/opt/nifi/nifi-current/javall # Custom libraries such as JDBC drivers
+      - nifi-vol:/opt/nifi/nifi-current # Persist Nifi data
     ports:
-      - "8083:8080"
-      - "8181:8181"
-      - "8443:8443"
-      - "9090:9090" # Port for pushing data to NiFi
-      - "9091:9091" # Port for pulling data to NiFi
-      - "10001:10000"
+      - "8083:8080" # Nifi UI port
+      - "8181:8181" # Nifi Site to Site port
+      - "8443:8443" # Nifi Secure UI port
+      - "9090:9090" # Port for pushing data to NiFi - on push
+      - "9091:9091" # Port for pulling data to NiFi - on pull
+      - "10001:10000" # Port for pushing data to NiFi - on push secure
 
   transactional-db:
     image: postgres:latest
@@ -32,9 +32,9 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: postgres
     ports:
-      - "5440:5432"
+      - "5440:5432" # Expose Postgres port just for testing
     volumes:
-      - transactional-db-data:/var/lib/postgresql/data
+      - transactional-db-data:/var/lib/postgresql/data # Persist Postgres data
 
   metabase:
     image: metabase/metabase:latest
@@ -42,7 +42,7 @@ services:
     deploy:
       replicas: 1
     ports:
-      - "3000:3000"
+      - "3000:3000" # Metabase UI port
     depends_on:
       - transactional-db
 
