@@ -4,7 +4,7 @@
 
 ![nifi](static/image_a.png "nifi")
 
-This project defines the complete architectural framework for the Ecostars Data Consumer Client, a sophisticated system engineered to operate within a federated data ecosystem (a "data space"). The client's core mandate is to establish and manage the robust, bidirectional flow of information, enabling it to function as both a passive recipient of asynchronous data pushes and an active requester of on-demand data.
+This project defines the complete architectural framework for the Ecostars Data Consumer Client, a system engineered to operate within a federated data space based in Rainbow. The client's core mandate is to establish and manage the robust, bidirectional flow of information, enabling it to function as both a passive recipient of asynchronous data pushes and an active requester of on-demand data.
 
 The architecture is strategically bifurcated into two primary operational branches, each addressing a distinct data interaction paradigm:
 
@@ -19,7 +19,7 @@ Both data streams converge into a unified persistence layer—a transactional da
 
 This branch is designed for scenarios where the data consumer must react to data changes as they happen. It defines a "listener" architecture.
 
-- **Endpoint Definition:** A secure, high-availability API endpoint (e.g., a RESTful webhook, an AMQP queue listener, or a Kafka topic consumer) is exposed to the data space. This endpoint serves as the single point of entry for all asynchronous data updates pushed by registered data providers.
+- **Endpoint Definition:** An API endpoint is exposed to the data space. This endpoint serves as the single point of entry for all asynchronous data updates pushed by registered data providers.
 - **Ingestion & Curation:** Upon reception, the raw data is immediately funneled into an **Apache NiFi** data flow pipeline. This pipeline is responsible for the critical "ingest and cure" process:
   - **Validation:** Schema enforcement, data type checking, and validation against business rules.
   - **Transformation:** Normalization, cleansing, and enrichment of the data (e.g., joining with internal reference data, standardizing formats).
