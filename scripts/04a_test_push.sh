@@ -1,5 +1,6 @@
 #!/bin/bash
 
+# Push case
 PUSH_URL=http://127.0.0.1:9090/consumer-data/push
 PUSH_TEST_DATA='{
   "id": 1,
