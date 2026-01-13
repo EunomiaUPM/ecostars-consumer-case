@@ -84,4 +84,4 @@ Metabase is the user-facing component of the architecture, democratizing data ac
 
 ## 4, Deployment
 
-Coming soon, but in the meanwhile, check out `/scripts` folder and feel free to run them all.
+Coming soon, but in the meanwhile, check out `/scripts` folder and feel free to run them all...
