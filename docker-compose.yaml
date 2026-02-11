@@ -1,5 +1,4 @@
 version: "3.8"
-
 x-common:
   common-env: &common-env
     POSTGRES_USER: postgres
