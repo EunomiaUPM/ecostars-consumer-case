@@ -1,0 +1,76 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "ecostars.fullname" . }}-transactional-db-setup
+  labels:
+    {{- include "ecostars.labels" . | nindent 4 }}
+    app.kubernetes.io/component: transactional-db-setup
+spec:
+  template:
+    metadata:
+      labels:
+        {{- include "ecostars.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: transactional-db-setup
+    spec:
+      restartPolicy: OnFailure
+      initContainers:
+        - name: wait-for-db
+          image: "{{ .Values.transactionalDb.image.repository }}:{{ .Values.transactionalDb.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              until pg_isready -h $POSTGRES_HOST -U $POSTGRES_USER; do
+                echo "Postgres is unavailable - sleeping"
+                sleep 2
+              done
+          env:
+            - name: POSTGRES_HOST
+              value: {{ include "ecostars.fullname" . }}-transactional-db
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "ecostars.fullname" . }}-transactional-db-config
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ecostars.fullname" . }}-transactional-db-secret
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "ecostars.fullname" . }}-transactional-db-config
+                  key: POSTGRES_DB
+      containers:
+        - name: setup-db
+          image: "{{ .Values.transactionalDb.image.repository }}:{{ .Values.transactionalDb.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          command: ["/bin/bash", "/scripts/01_init_db.sh"]
+          env:
+            - name: POSTGRES_HOST
+              value: {{ include "ecostars.fullname" . }}-transactional-db
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "ecostars.fullname" . }}-transactional-db-config
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ecostars.fullname" . }}-transactional-db-secret
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "ecostars.fullname" . }}-transactional-db-config
+                  key: POSTGRES_DB
+          volumeMounts:
+            - name: init-script
+              mountPath: /scripts
+      volumes:
+        - name: init-script
+          configMap:
+            name: {{ include "ecostars.fullname" . }}-transactional-db-init-script
+            defaultMode: 0777

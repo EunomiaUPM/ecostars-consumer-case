@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ecostars.fullname" . }}-nifi-registry
+  labels:
+    {{- include "ecostars.labels" . | nindent 4 }}
+    app.kubernetes.io/component: nifi-registry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "ecostars.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: nifi-registry
+  template:
+    metadata:
+      labels:
+        {{- include "ecostars.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: nifi-registry
+    spec:
+      containers:
+        - name: nifi-registry
+          image: "{{ .Values.nifiRegistry.image.repository }}:{{ .Values.nifiRegistry.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.nifiRegistry.port }}
+              protocol: TCP
+          env:
+            - name: NIFI_REGISTRY_WEB_HTTP_PORT
+              value: {{ .Values.nifiRegistry.port | quote }}
+          volumeMounts:
+            - name: nifi-registry-data
+              mountPath: /opt/nifi-registry/nifi-registry-current/data
+      volumes:
+        - name: nifi-registry-data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ecostars.fullname" . }}-nifi-registry
+  labels:
+    {{- include "ecostars.labels" . | nindent 4 }}
+    app.kubernetes.io/component: nifi-registry
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.nifiRegistry.port }}
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "ecostars.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: nifi-registry

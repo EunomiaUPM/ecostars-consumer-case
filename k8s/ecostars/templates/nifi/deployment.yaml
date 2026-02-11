@@ -1,0 +1,112 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ecostars.fullname" . }}-nifi
+  labels:
+    {{- include "ecostars.labels" . | nindent 4 }}
+    app.kubernetes.io/component: nifi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "ecostars.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: nifi
+  template:
+    metadata:
+      labels:
+        {{- include "ecostars.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: nifi
+    spec:
+      initContainers:
+        - name: download-jdbc-driver
+          image: curlimages/curl:latest
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              VERSION={{ .Values.nifi.jdbcDriver.version }}
+              URL=https://jdbc.postgresql.org/download/postgresql-$VERSION.jar
+              echo "Downloading PostgreSQL JDBC driver v$VERSION..."
+              curl -L -o /drivers/postgresql-$VERSION.jar $URL
+              echo "Download complete."
+          volumeMounts:
+            - name: jdbc-drivers
+              mountPath: /drivers
+      containers:
+        - name: nifi
+          image: "{{ .Values.nifi.image.repository }}:{{ .Values.nifi.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.nifi.ports.http }}
+              protocol: TCP
+            - name: https
+              containerPort: {{ .Values.nifi.ports.https }}
+              protocol: TCP
+            - name: push
+              containerPort: {{ .Values.nifi.ports.push }}
+              protocol: TCP
+            - name: pull
+              containerPort: {{ .Values.nifi.ports.pull }}
+              protocol: TCP
+          env:
+            - name: NIFI_WEB_PROXY_HOST
+              value: "{{ include "ecostars.fullname" . }}-nifi:{{ .Values.nifi.ports.https }},localhost:{{ .Values.nifi.ports.https }}"
+            - name: NIFI_AUTHENTICATION_STRATEGY
+              value: "single-user"
+            - name: SINGLE_USER_CREDENTIALS_USERNAME
+              value: {{ .Values.nifi.auth.username | quote }}
+            - name: SINGLE_USER_CREDENTIALS_PASSWORD
+              value: {{ .Values.nifi.auth.password | quote }}
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "ecostars.fullname" . }}-transactional-db-config
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ecostars.fullname" . }}-transactional-db-secret
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "ecostars.fullname" . }}-transactional-db-config
+                  key: POSTGRES_DB
+          volumeMounts:
+            - name: jdbc-drivers
+              mountPath: /opt/nifi/nifi-current/javall
+      volumes:
+        - name: jdbc-drivers
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ecostars.fullname" . }}-nifi
+  labels:
+    {{- include "ecostars.labels" . | nindent 4 }}
+    app.kubernetes.io/component: nifi
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.nifi.ports.http }}
+      targetPort: http
+      protocol: TCP
+    - name: https
+      port: {{ .Values.nifi.ports.https }}
+      targetPort: https
+      protocol: TCP
+    - name: push
+      port: {{ .Values.nifi.ports.push }}
+      targetPort: push
+      protocol: TCP
+    - name: pull
+      port: {{ .Values.nifi.ports.pull }}
+      targetPort: pull
+      protocol: TCP
+  selector:
+    {{- include "ecostars.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: nifi

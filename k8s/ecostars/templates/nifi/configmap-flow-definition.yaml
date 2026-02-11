@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ecostars.fullname" . }}-nifi-flow-definition
+  labels:
+    {{- include "ecostars.labels" . | nindent 4 }}
+    app.kubernetes.io/component: nifi-setup
+data:
+  flow_definition.json: |
+{{ .Files.Get "files/flow_definition.json" | indent 4 }}

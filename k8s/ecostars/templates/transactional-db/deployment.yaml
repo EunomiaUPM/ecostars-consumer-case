@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ecostars.fullname" . }}-transactional-db
+  labels:
+    {{- include "ecostars.labels" . | nindent 4 }}
+    app.kubernetes.io/component: transactional-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "ecostars.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: transactional-db
+  template:
+    metadata:
+      labels:
+        {{- include "ecostars.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: transactional-db
+    spec:
+      containers:
+        - name: transactional-db
+          image: "{{ .Values.transactionalDb.image.repository }}:{{ .Values.transactionalDb.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: tcp
+              containerPort: {{ .Values.transactionalDb.port }}
+              protocol: TCP
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "ecostars.fullname" . }}-transactional-db-config
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ecostars.fullname" . }}-transactional-db-secret
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "ecostars.fullname" . }}-transactional-db-config
+                  key: POSTGRES_DB
+          volumeMounts:
+            - name: transactional-db-data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: transactional-db-data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ecostars.fullname" . }}-transactional-db
+  labels:
+    {{- include "ecostars.labels" . | nindent 4 }}
+    app.kubernetes.io/component: transactional-db
+spec:
+  type: ClusterIP
+  ports:
+    - name: tcp
+      port: {{ .Values.transactionalDb.port }}
+      targetPort: tcp
+      protocol: TCP
+  selector:
+    {{- include "ecostars.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: transactional-db

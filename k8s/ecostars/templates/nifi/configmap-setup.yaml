@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ecostars.fullname" . }}-nifi-setup-script
+  labels:
+    {{- include "ecostars.labels" . | nindent 4 }}
+    app.kubernetes.io/component: nifi-setup
+data:
+  03_setup_nifi.sh: |
+{{ .Files.Get "files/03_setup_nifi.sh" | indent 4 }}

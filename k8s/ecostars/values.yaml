@@ -1,0 +1,59 @@
+# Default values for ecostars.
+# This is a YAML-formatted file.
+
+# ── Global ──────────────────────────────────────────
+global:
+  imagePullPolicy: IfNotPresent
+
+# ── PostgreSQL (transactional-db) ───────────────────
+transactionalDb:
+  image:
+    repository: postgres
+    tag: "15"
+  credentials:
+    user: postgres
+    password: postgres
+    database: postgres
+  port: 5432
+
+# ── NiFi ────────────────────────────────────────────
+nifi:
+  image:
+    repository: apache/nifi
+    tag: latest
+  auth:
+    username: nifi
+    password: nifinifinifinifi
+  jdbcDriver:
+    version: "42.7.8"
+  ports:
+    http: 8080
+    https: 8443
+    push: 9090
+    pull: 9091
+
+# ── NiFi Registry ──────────────────────────────────
+nifiRegistry:
+  image:
+    repository: apache/nifi-registry
+    tag: latest
+  port: 18080
+
+# ── Metabase ───────────────────────────────────────
+metabase:
+  image:
+    repository: metabase/metabase
+    tag: latest
+  port: 3000
+
+# ── Ingress ────────────────────────────────────────
+ingress:
+  enabled: true
+  className: ""
+  annotations: {}
+  hosts:
+    - host: chart-example.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []

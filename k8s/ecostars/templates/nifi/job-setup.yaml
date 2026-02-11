@@ -1,0 +1,60 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "ecostars.fullname" . }}-nifi-setup
+  labels:
+    {{- include "ecostars.labels" . | nindent 4 }}
+    app.kubernetes.io/component: nifi-setup
+spec:
+  template:
+    metadata:
+      labels:
+        {{- include "ecostars.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: nifi-setup
+    spec:
+      restartPolicy: OnFailure
+      initContainers:
+        - name: wait-for-nifi
+          image: curlimages/curl:latest
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for NiFi to be ready..."
+              until curl -k -s -o /dev/null -w "%{http_code}" "https://${NIFI_SERVICE}:{{ .Values.nifi.ports.https }}/nifi-api/authentication/configuration" | grep -q "200"; do
+                echo "NiFi is unavailable - sleeping"
+                sleep 5
+              done
+              echo "NiFi is ready!"
+          env:
+            - name: NIFI_SERVICE
+              value: {{ include "ecostars.fullname" . }}-nifi
+      containers:
+        - name: setup-nifi
+          image: alpine:latest
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              apk add --no-cache curl jq > /dev/null 2>&1
+              sh /scripts/03_setup_nifi.sh
+          env:
+            - name: NIFI_SERVICE
+              value: {{ include "ecostars.fullname" . }}-nifi
+            - name: NIFI_REGISTRY_SERVICE
+              value: {{ include "ecostars.fullname" . }}-nifi-registry
+          volumeMounts:
+            - name: setup-script
+              mountPath: /scripts
+            - name: flow-definition
+              mountPath: /data
+      volumes:
+        - name: setup-script
+          configMap:
+            name: {{ include "ecostars.fullname" . }}-nifi-setup-script
+            defaultMode: 0777
+        - name: flow-definition
+          configMap:
+            name: {{ include "ecostars.fullname" . }}-nifi-flow-definition
