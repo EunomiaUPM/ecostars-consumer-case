@@ -28,6 +28,8 @@ services:
       - "9090:9090" # Port for pushing data to NiFi - on push
       - "9091:9091" # Port for pulling data to NiFi - on pull
       - "10001:10000" # Port for pushing data to NiFi - on push secure
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   nifi-registry:
     image: apache/nifi-registry:latest
@@ -40,9 +42,11 @@ services:
       NIFI_REGISTRY_WEB_HTTP_PORT: "18080"
     volumes:
       - $PWD/nifi-registry-data:/opt/nifi-registry/nifi-registry-current/data # Persist Nifi Registry data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   transactional-db:
-    image: postgres:latest
+    image: postgres:15
     container_name: transactional-db
     deploy:
       replicas: 1
@@ -52,6 +56,8 @@ services:
       - "5440:5432" # Expose Postgres port just for testing
     volumes:
       - transactional-db-data:/var/lib/postgresql/data # Persist Postgres data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   metabase:
     image: metabase/metabase:latest
@@ -62,6 +68,8 @@ services:
       - "3000:3000" # Metabase UI port
     depends_on:
       - transactional-db
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 volumes:
   transactional-db-data:

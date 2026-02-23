@@ -1,87 +1,211 @@
-# Ecostars Data Consumer Client: A Data Space Interaction Framework
+# Ecostars Ingestion Service
 
-## 1. Project Overview
-
-![nifi](static/image_a.png "nifi")
-
-This project defines the complete architectural framework for the Ecostars Data Consumer Client, a system engineered to operate within a federated data space based in Rainbow. The client's core mandate is to establish and manage the robust, bidirectional flow of information, enabling it to function as both a passive recipient of asynchronous data pushes and an active requester of on-demand data.
-
-The architecture is strategically bifurcated into two primary operational branches, each addressing a distinct data interaction paradigm:
-
-1. **The PUSH Model:** An event-driven ingestion path where the client receives data updates from external providers.
-2. **The PULL Model:** A request-response path where the client actively queries data providers for specific information.
-
-Both data streams converge into a unified persistence layer—a transactional database—which subsequently feeds a business intelligence and analytics platform (Metabase) for reporting, monitoring, and insight generation.
-
-## 2. Architectural Branches
-
-### 2.1. PUSH Model: Asynchronous Data Ingestion
-
-This branch is designed for scenarios where the data consumer must react to data changes as they happen. It defines a "listener" architecture.
-
-- **Endpoint Definition:** An API endpoint is exposed to the data space. This endpoint serves as the single point of entry for all asynchronous data updates pushed by registered data providers.
-- **Ingestion & Curation:** Upon reception, the raw data is immediately funneled into an **Apache NiFi** data flow pipeline. This pipeline is responsible for the critical "ingest and cure" process:
-  - **Validation:** Schema enforcement, data type checking, and validation against business rules.
-  - **Transformation:** Normalization, cleansing, and enrichment of the data (e.g., joining with internal reference data, standardizing formats).
-  - **Routing:** Directing data to appropriate tables or flagging it for manual review if it fails validation.
-- **Persistence:** Once curated, the clean data is persisted in a **transactional database** (e.g., PostgreSQL, MySQL). This ensures data integrity, atomicity, and consistency (ACID compliance), making it a reliable source of truth.
-- **Consumption:** This database is connected as a data source to **Metabase**, allowing for real-time dashboarding of incoming data.
-
-### 2.2. PULL Model: On-Demand Data Retrieval
-
-This branch empowers the client to proactively fetch data when needed, either on a schedule or triggered by an internal business event.
-
-- **Internal Endpoint:** An internal service (e.g., a microservice, a scheduled job, or an internal API gateway) is defined. This service orchestrates the data request logic.
-- **Data Request:** This internal service initiates synchronous requests to the data space provider's designated APIs. This process typically involves:
-  - **Authentication:** Securely managing credentials (e.g., OAuth2 tokens) required by the provider.
-  - **Parameterization:** Building dynamic queries (e.g., specifying date ranges, entity IDs, or specific data facets).
-  - **Data Retrieval:** Executing the request (e.g., an `HTTP GET` call) and handling the response (typically a JSON or XML payload).
-- **Population & Persistence:** The retrieved data payload is processed (this can also be orchestrated by an **Apache NiFi** flow triggered by the internal service) and then used to populate or update the **transactional database**. This ensures the data fetched on demand is integrated with the data received via the PUSH model.
-- **Consumption:** The newly populated data becomes immediately available in **Metabase** for analysis, appearing alongside the PUSH-model data to provide a holistic view.
+A FastAPI microservice that acts as the data ingestion layer for the Ecostars Data Consumer Client, operating within a federated data space based on Rainbow. It handles both real-time metric updates (push) and on-demand bulk data retrieval (pull), persisting everything into a PostgreSQL database consumed by Metabase.
 
 ---
 
-### 3. Core Technology Stack
+## Architecture
 
-<img src="static/image_b.png" width="400">
+The service exposes two ingestion endpoints that mirror the two data interaction paradigms of the platform:
 
-#### 3.1. Apache NiFi: The Data Logistics & Curation Engine
+```
+External Data Space
+        │
+        ├──── POST /consumer-ingestion/pull  ──►  Fetches hotels + measures  ──►  PostgreSQL
+        │                                                                               │
+        └──── POST /consumer-ingestion/push  ──►  Receives metric updates    ──►  PostgreSQL
+                                                                                       │
+                                                                                  Metabase
+```
 
-![nifi](static/nifi.png "nifi")
+### `/pull` — On-demand bulk ingestion
 
-Apache NiFi serves as the central nervous system for all data movement and processing. It provides a visual, flow-based programming model ideal for managing the complexities of data ingestion from disparate sources.
+Triggered manually or by a scheduler. Accepts a URL, calls it, and upserts the returned hotel and measure data into the database. Hotels are matched by `(name, city)`; measures are matched by `(hotel_id, year)`.
 
-- **Core Function:** NiFi orchestrates the entire Extract, Transform, and Load (ETL) pipeline in a visual, auditable, and resilient manner.
-- **Key Features Utilized:**
-  - **Visual Flow Management:** Data flows are designed as directed graphs of "Processors" (e.g., `ListenHTTP`, `InvokeHTTP`, `JoltTransformJSON`, `ValidateRecord`, `PutSQL`), making the logic transparent and easy to modify.
-  - **Data Provenance:** NiFi automatically records a complete, chain-of-custody for every piece of data (a "FlowFile") that moves through the system. This provides full traceability from ingestion to persistence, which is critical for debugging and compliance.
-  - **Back Pressure & Queuing:** NiFi inherently manages data flow rates, preventing downstream systems (like the database) from being overwhelmed by data spikes. Data is queued between processors, ensuring guaranteed delivery.
-- **Role in PUSH Model:**
-  1. A `ListenHTTP` or `ListenRELP` processor acts as the primary endpoint.
-  2. Processors like `ValidateRecord` and `JoltTransformJSON` perform the curation.
-  3. A `PutDatabaseRecord` or `PutSQL` processor loads the data into the transactional database.
-- **Role in PULL Model:**
-  1. A `GenerateFlowFile` processor can trigger the flow on a schedule (e.g., every hour).
-  2. An `InvokeHTTP` processor makes the outbound API call to the data provider.
-  3. Processors like `ExtractJSONPath` and `SplitJSON` parse the response.
-  4. A `PutSQL` processor inserts/updates the data in the database.
+### `/push` — Real-time metric ingestion
 
-#### 3.2. Metabase: The Self-Service Analytics & Visualization Platform
-
-![nifi](static/metabase.png "metabase")
-
-Metabase is the user-facing component of the architecture, democratizing data access and transforming the raw, persisted data into actionable business intelligence.
-
-- **Core Function:** Provides an intuitive, question-based interface for non-technical users to explore, visualize, and share insights from the data.
-- **Key Features Utilized:**
-  - **Data Source Connection:** Metabase connects directly to the transactional database (PostgreSQL, MySQL, etc.) that NiFi populates.
-  - **Self-Service Analytics:** Users can ask simple questions (e.g., "Show me all updates from Provider X in the last 7 days, grouped by data type") without writing SQL. Metabase generates the query, executes it, and suggests the best visualization (e.g., line chart, bar chart, table).
-  - **Data Modeling:** A lightweight semantic layer allows administrators to enhance the raw database schema. This involves hiding irrelevant columns, creating user-friendly "Segments" (e.g., "Active Providers"), and defining "Metrics" (e.g., "Average Update Frequency").
-  - **Interactive Dashboards:** Users can combine multiple "Questions" into comprehensive, auto-refreshing dashboards to monitor Key Performance Indicators (KPIs) of the data space integration.
-  - **Alerts & Pulses:** Automated alerts can be configured to notify stakeholders via email or Slack when certain data thresholds are met (e.g., "Alert me if no data is received from the PUSH endpoint for 2 hours").
+Webhook endpoint that receives individual metric updates and appends them as immutable historical records to the `metric_items` table.
 
 ---
 
-## 4, Deployment
+## Tech Stack
 
-Coming soon, but in the meanwhile, check out `/scripts` folder and feel free to run them all...
+| Component      | Role                                 |
+| -------------- | ------------------------------------ |
+| **FastAPI**    | API framework                        |
+| **SQLModel**   | ORM + schema validation              |
+| **PostgreSQL** | Transactional persistence            |
+| **httpx**      | Async HTTP client for external calls |
+| **Metabase**   | BI and dashboarding                  |
+| **Docker**     | Containerisation                     |
+
+---
+
+## Project Structure
+
+```
+ingestion-service/
+├── app/
+│   ├── main.py           # App entrypoint, startup hooks
+│   ├── db.py             # Engine, session, table creation
+│   ├── models.py         # SQLModel table definitions
+│   └── routers/
+│       └── items.py      # /pull and /push endpoints
+├── Dockerfile
+└── requirements.txt
+```
+
+---
+
+## Getting Started
+
+### Local development
+
+1. Create a `.env` file in `ingestion-service/`:
+
+```env
+DATABASE_USER=postgres
+DATABASE_PASSWORD=postgres
+DATABASE_HOST=localhost
+DATABASE_PORT=5440
+DATABASE_NAME=postgres
+```
+
+2. Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+3. Run the service:
+
+```bash
+uvicorn app.main:app --reload
+```
+
+API docs available at `http://localhost:8000/docs`.
+
+---
+
+### Docker (full stack)
+
+From the project root:
+
+```bash
+docker compose up --build
+```
+
+This starts:
+
+| Service           | URL                          |
+| ----------------- | ---------------------------- |
+| Ingestion Service | `http://localhost:8000`      |
+| Swagger UI        | `http://localhost:8000/docs` |
+| PostgreSQL        | `localhost:5440`             |
+| Metabase          | `http://localhost:3000`      |
+| NiFi Registry     | `http://localhost:18080`     |
+
+---
+
+## Environment Variables
+
+All configuration is injected via environment variables. No `.env` file is needed when running in Docker.
+
+| Variable            | Description                                | Default |
+| ------------------- | ------------------------------------------ | ------- |
+| `ENV`               | Set to `production` to skip `.env` loading | —       |
+| `APP_PORT`          | Port the service listens on                | `8000`  |
+| `DATABASE_USER`     | PostgreSQL user                            | —       |
+| `DATABASE_PASSWORD` | PostgreSQL password                        | —       |
+| `DATABASE_HOST`     | PostgreSQL host                            | —       |
+| `DATABASE_PORT`     | PostgreSQL port                            | —       |
+| `DATABASE_NAME`     | PostgreSQL database name                   | —       |
+
+---
+
+## API Reference
+
+### `POST /consumer-ingestion/pull`
+
+Triggers a bulk fetch from an external URL and upserts hotels and their measures.
+
+**Request body:**
+
+```json
+{
+  "url": "https://example.com/api/hotels"
+}
+```
+
+**Response:**
+
+```json
+{
+  "source": "https://example.com/api/hotels",
+  "total_received": 30,
+  "summary": {
+    "hotels_created": 25,
+    "hotels_updated": 5,
+    "measures_created": 90,
+    "measures_updated": 10,
+    "measures_skipped": 0
+  }
+}
+```
+
+---
+
+### `POST /consumer-ingestion/push`
+
+Receives a real-time metric update and inserts it as a new historical record.
+
+**Request body:**
+
+```json
+{
+  "id": 7,
+  "item_type": "hotel_energy_usage",
+  "last_value": 71.74,
+  "last_measured_at": "2026-02-23T00:00:00Z"
+}
+```
+
+**Response:**
+
+```json
+{
+  "action": "created",
+  "id": 42,
+  "hotel_id": 7,
+  "item_type": "hotel_energy_usage",
+  "last_value": 71.74,
+  "last_measured_at": "2026-02-23"
+}
+```
+
+---
+
+### `GET /health`
+
+```json
+{ "status": "ok" }
+```
+
+---
+
+## Data Model
+
+```
+hotels
+  └── hotel_measures  (one hotel → many yearly measures)
+
+metric_items          (append-only metric history, keyed by hotel_id)
+```
+
+---
+
+## Deployment
+
+See `docker-compose.yml` in the project root. The `ingestion-service` depends on `transactional-db` with a health check, so the app will only start once PostgreSQL is ready.
+
+To recreate the database schema from scratch, set `drop_first=True` in `create_db_and_tables()` on first startup — **development only**.
