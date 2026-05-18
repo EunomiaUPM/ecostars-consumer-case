@@ -18,11 +18,11 @@ External Data Space
                                                                                   Metabase
 ```
 
-### `/pull` — On-demand bulk ingestion
+### `/pull` - On-demand bulk ingestion
 
 Triggered manually or by a scheduler. Accepts a URL, calls it, and upserts the returned hotel and measure data into the database. Hotels are matched by `(name, city)`; measures are matched by `(hotel_id, year)`.
 
-### `/push` — Real-time metric ingestion
+### `/push` - Real-time metric ingestion
 
 Webhook endpoint that receives individual metric updates and appends them as immutable historical records to the `metric_items` table.
 
@@ -113,13 +113,13 @@ All configuration is injected via environment variables. No `.env` file is neede
 
 | Variable            | Description                                | Default |
 | ------------------- | ------------------------------------------ | ------- |
-| `ENV`               | Set to `production` to skip `.env` loading | —       |
+| `ENV`               | Set to `production` to skip `.env` loading | -       |
 | `APP_PORT`          | Port the service listens on                | `8000`  |
-| `DATABASE_USER`     | PostgreSQL user                            | —       |
-| `DATABASE_PASSWORD` | PostgreSQL password                        | —       |
-| `DATABASE_HOST`     | PostgreSQL host                            | —       |
-| `DATABASE_PORT`     | PostgreSQL port                            | —       |
-| `DATABASE_NAME`     | PostgreSQL database name                   | —       |
+| `DATABASE_USER`     | PostgreSQL user                            | -       |
+| `DATABASE_PASSWORD` | PostgreSQL password                        | -       |
+| `DATABASE_HOST`     | PostgreSQL host                            | -       |
+| `DATABASE_PORT`     | PostgreSQL port                            | -       |
+| `DATABASE_NAME`     | PostgreSQL database name                   | -       |
 
 ---
 
@@ -208,4 +208,4 @@ metric_items          (append-only metric history, keyed by hotel_id)
 
 See `docker-compose.yml` in the project root. The `ingestion-service` depends on `transactional-db` with a health check, so the app will only start once PostgreSQL is ready.
 
-To recreate the database schema from scratch, set `drop_first=True` in `create_db_and_tables()` on first startup — **development only**.
+To recreate the database schema from scratch, set `drop_first=True` in `create_db_and_tables()` on first startup - **development only**.
