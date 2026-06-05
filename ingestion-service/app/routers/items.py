@@ -1,14 +1,15 @@
 import logging
 from datetime import date, datetime
 from typing import Any
+from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, HttpUrl
-from sqlmodel import Session, select
+from sqlmodel import Session
 
 from app.db import get_session
-from app.models import Hotel, HotelMeasure, MetricItem
+from app.models import Chain, EnvironmentalMetric, Hotel, MetricItem, SocialMetric
 
 logger = logging.getLogger(__name__)
 
@@ -24,83 +25,50 @@ class PullRequest(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# camelCase → snake_case field mapping for HotelMeasure payloads.
-# The external API returns measure fields in camelCase; our DB columns use
-# snake_case. Any key not present in this map falls back to key.lower().
+# camelCase → snake_case mappings per metric type
 # ---------------------------------------------------------------------------
 
-MEASURES_FIELD_MAP: dict[str, str] = {
-    "gasKwh": "gas_kwh",
-    "waterM3": "water_m3",
-    "energyKwh": "energy_kwh",
-    "ratingCo2": "rating_co2",
-    "totalArea": "total_area",
-    "staysPerRN": "stays_per_rn",
-    "ratingCo2RN": "rating_co2_rn",
-    "ratingWater": "rating_water",
-    "deviationCo2": "deviation_co2",
-    "ratingEnergy": "rating_energy",
-    "ratingCo2S1RN": "rating_co2_s1_rn",
-    "ratingCo2S2RN": "rating_co2_s2_rn",
-    "ratingCo2Stay": "rating_co2_stay",
-    "ratingWaterRN": "rating_water_rn",
-    "deviationCo2RN": "deviation_co2_rn",
-    "deviationWaste": "deviation_waste",
-    "deviationWater": "deviation_water",
-    "electricityKwh": "electricity_kwh",
+SOCIAL_FIELD_MAP: dict[str, str] = {
+    "absenteeismRate": "absenteeism_rate",
+    "turnoverRate": "turnover_rate",
+    "voluntaryTurnoverRate": "voluntary_turnover_rate",
+    "involuntaryTurnoverRate": "involuntary_turnover_rate",
+    "retirementTurnoverRate": "retirement_turnover_rate",
+    "femaleHeadcountShare": "female_headcount_share",
+    "femaleManagementHeadcountShare": "female_management_headcount_share",
+    "genderPayGap": "gender_pay_gap",
+    "wageInequalityRatio": "wage_inequality_ratio",
+    "meanHourlyWage": "mean_hourly_wage",
+}
+
+ENVIRONMENTAL_FIELD_MAP: dict[str, str] = {
+    "energyTotalKwh": "energy_total_kwh",
     "ratingEnergyRN": "rating_energy_rn",
-    "totalEmissions": "total_emissions",
-    "co2Compensation": "co2_compensation",
-    "deviationEnergy": "deviation_energy",
-    "ratingCo2S1Stay": "rating_co2_s1_stay",
-    "ratingCo2S2Stay": "rating_co2_s2_stay",
-    "ratingWaterArea": "rating_water_area",
-    "ratingWaterRoom": "rating_water_room",
-    "ratingWaterStay": "rating_water_stay",
+    "benchmarkRatingEnergyRN": "benchmark_rating_energy_rn",
+    "waterM3": "water_m3",
+    "ratingWaterRN": "rating_water_rn",
+    "benchmarkRatingWaterRN": "benchmark_rating_water_rn",
+    "wasteKg": "waste_kg",
+    "ratingWasteRN": "rating_waste_rn",
+    "benchmarkRatingWasteRN": "benchmark_rating_waste_rn",
     "scope1Emissions": "scope1_emissions",
     "scope2Emissions": "scope2_emissions",
-    "deviationCo2S1RN": "deviation_co2_s1_rn",
-    "deviationCo2S2RN": "deviation_co2_s2_rn",
-    "deviationCo2S3RN": "deviation_co2_s3_rn",
-    "deviationCo2Stay": "deviation_co2_stay",
-    "deviationWasteRN": "deviation_waste_rn",
-    "deviationWaterRN": "deviation_water_rn",
-    "directStationary": "direct_stationary",
-    "ratingEnergyArea": "rating_energy_area",
-    "ratingEnergyRoom": "rating_energy_room",
-    "ratingEnergyStay": "rating_energy_stay",
-    "recommendedStars": "recommended_stars",
-    "deviationEnergyRN": "deviation_energy_rn",
-    "deviationCo2S1Stay": "deviation_co2_s1_stay",
-    "deviationCo2S2Stay": "deviation_co2_s2_stay",
-    "deviationCo2S3Stay": "deviation_co2_s3_stay",
-    "deviationWasteStay": "deviation_waste_stay",
-    "deviationWaterStay": "deviation_water_stay",
-    "recommendedStarsV1": "recommended_stars_v1",
-    "recommendedStarsV2": "recommended_stars_v2",
-    "scope2Compensation": "scope2_compensation",
-    "deviationEnergyStay": "deviation_energy_stay",
-    "energyKwhWithCo2Compensation": "energy_kwh_with_co2_compensation",
-    "ratingEnergyWithCo2Compensation": "rating_energy_with_co2_compensation",
-    "deviationEnergyWithCo2Compensation": "deviation_energy_with_co2_compensation",
+    "scope3Emissions": "scope3_emissions",
+    "co2Emissions": "co2_emissions",
+    "ratingCO2RN": "rating_co2_rn",
+    "benchmarkRatingCO2RN": "benchmark_rating_co2_rn",
 }
+
+# Keys that uniquely identify each metric type (present even when null)
+_SOCIAL_SENTINEL = "absenteeismRate"
+_ENVIRONMENTAL_SENTINEL = "energyTotalKwh"
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _normalize_measure(raw: dict) -> dict:
-    """Translate a raw measure dict from camelCase to snake_case column names."""
-    return {MEASURES_FIELD_MAP.get(k, k.lower()): v for k, v in raw.items()}
-
-
 def _fetch_external_data(url: str) -> list[dict]:
-    """
-    Perform a synchronous GET request to the external URL and return the
-    payload normalised as a list (handles both single-object and list responses).
-    Raises HTTPException on network or HTTP errors.
-    """
     try:
         with httpx.Client(timeout=30) as client:
             response = client.get(url)
@@ -125,82 +93,158 @@ def _fetch_external_data(url: str) -> list[dict]:
     return payload if isinstance(payload, list) else [payload]
 
 
-def _upsert_hotel(session: Session, record: dict, now: datetime) -> tuple[Hotel, str]:
-    """
-    Insert or update a Hotel row identified by (name, city).
-    Returns the Hotel instance and the action performed ("created" | "updated").
-    """
-    hotel = session.exec(
-        select(Hotel).where(
-            Hotel.name == record.get("name"),
-            Hotel.city == record.get("city"),
-            Hotel.deleted_at.is_(None),  # type: ignore[union-attr]
-        )
-    ).first()
+def _upsert_chain(session: Session, record: dict, now: datetime) -> str | None:
+    if not record.get("chain_uuid"):
+        return None
 
-    if hotel:
-        hotel.address = record.get("address", hotel.address)
-        hotel.updated_at = now
-        session.add(hotel)
-        return hotel, "updated"
-
-    hotel = Hotel(
-        name=record.get("name"),
-        address=record.get("address"),
-        city=record.get("city"),
-        created_at=now,
-        updated_at=now,
-    )
-    session.add(hotel)
-    session.flush()  # materialise hotel.id before processing its measures
-    return hotel, "created"
-
-
-def _upsert_measure(
-    session: Session,
-    hotel: Hotel,
-    raw_measure: dict,
-    now: datetime,
-) -> str:
-    """
-    Insert or update a HotelMeasure row identified by (hotel_id, year).
-    Returns the action performed ("created" | "updated").
-
-    The external hotel_id is intentionally ignored; we always use the local
-    hotel.id to maintain referential integrity.
-    """
-    normalized = _normalize_measure(raw_measure)
-    year = normalized.get("year")
-
-    if year is None:
-        return "skipped"
-
-    existing = session.exec(
-        select(HotelMeasure).where(
-            HotelMeasure.hotel_id == hotel.id,
-            HotelMeasure.year == year,
-            HotelMeasure.deleted_at.is_(None),  # type: ignore[union-attr]
-        )
-    ).first()
-
-    # Fields that must never be overwritten from the external payload
-    PROTECTED_FIELDS = {"id", "created_at", "hotel_id"}
+    chain_uuid = UUID(record["chain_uuid"])
+    existing = session.get(Chain, chain_uuid)
 
     if existing:
-        for key, value in normalized.items():
-            if hasattr(existing, key) and key not in PROTECTED_FIELDS:
-                setattr(existing, key, value)
+        existing.name = record.get("chain_name", existing.name)
         existing.updated_at = now
         session.add(existing)
         return "updated"
 
-    measure_data = {
-        k: v
-        for k, v in normalized.items()
-        if hasattr(HotelMeasure, k) and k not in PROTECTED_FIELDS
-    }
-    session.add(HotelMeasure(**measure_data, hotel_id=hotel.id, created_at=now, updated_at=now))
+    session.add(Chain(
+        uuid=chain_uuid,
+        name=record["chain_name"],
+        created_at=now,
+        updated_at=now,
+    ))
     return "created"
+
+
+def _upsert_hotel(session: Session, record: dict, now: datetime) -> tuple[Hotel, str]:
+    hotel_uuid = UUID(record["hotel_uuid"])
+    existing = session.get(Hotel, hotel_uuid)
+
+    chain_uuid = UUID(record["chain_uuid"]) if record.get("chain_uuid") else None
+
+    if existing:
+        existing.name = record.get("hotel_name", existing.name)
+        existing.lat = record.get("lat", existing.lat)
+        existing.lon = record.get("lon", existing.lon)
+        existing.chain_uuid = chain_uuid
+        existing.country_slug = record.get("country_slug", existing.country_slug)
+        existing.category_slug = record.get("category_slug", existing.category_slug)
+        existing.zip = record.get("zip", existing.zip)
+        existing.region = record.get("region", existing.region)
+        existing.updated_at = now
+        session.add(existing)
+        return existing, "updated"
+
+    hotel = Hotel(
+        uuid=hotel_uuid,
+        name=record["hotel_name"],
+        lat=record.get("lat"),
+        lon=record.get("lon"),
+        chain_uuid=chain_uuid,
+        country_slug=record.get("country_slug"),
+        category_slug=record.get("category_slug"),
+        zip=record.get("zip"),
+        region=record.get("region"),
+        created_at=now,
+        updated_at=now,
+    )
+    session.add(hotel)
+    session.flush()
+    return hotel, "created"
+
+
+def _upsert_social_metric(
+    session: Session,
+    hotel_uuid: UUID,
+    raw: dict,
+    now: datetime,
+) -> str:
+    metric_uuid = UUID(raw["uuid"])
+    existing = session.get(SocialMetric, metric_uuid)
+
+    if existing:
+        for camel, snake in SOCIAL_FIELD_MAP.items():
+            if camel in raw:
+                setattr(existing, snake, raw[camel])
+        existing.updated_at = now
+        session.add(existing)
+        return "updated"
+
+    session.add(SocialMetric(
+        uuid=metric_uuid,
+        hotel_uuid=hotel_uuid,
+        periodicity=raw["periodicity"],
+        period=raw["period"],
+        absenteeism_rate=raw.get("absenteeismRate"),
+        turnover_rate=raw.get("turnoverRate"),
+        voluntary_turnover_rate=raw.get("voluntaryTurnoverRate"),
+        involuntary_turnover_rate=raw.get("involuntaryTurnoverRate"),
+        retirement_turnover_rate=raw.get("retirementTurnoverRate"),
+        female_headcount_share=raw.get("femaleHeadcountShare"),
+        female_management_headcount_share=raw.get("femaleManagementHeadcountShare"),
+        gender_pay_gap=raw.get("genderPayGap"),
+        wage_inequality_ratio=raw.get("wageInequalityRatio"),
+        mean_hourly_wage=raw.get("meanHourlyWage"),
+        created_at=now,
+        updated_at=now,
+    ))
+    return "created"
+
+
+def _upsert_environmental_metric(
+    session: Session,
+    hotel_uuid: UUID,
+    raw: dict,
+    now: datetime,
+) -> str:
+    metric_uuid = UUID(raw["uuid"])
+    existing = session.get(EnvironmentalMetric, metric_uuid)
+
+    if existing:
+        for camel, snake in ENVIRONMENTAL_FIELD_MAP.items():
+            if camel in raw:
+                setattr(existing, snake, raw[camel])
+        existing.updated_at = now
+        session.add(existing)
+        return "updated"
+
+    session.add(EnvironmentalMetric(
+        uuid=metric_uuid,
+        hotel_uuid=hotel_uuid,
+        periodicity=raw["periodicity"],
+        period=raw["period"],
+        energy_total_kwh=raw.get("energyTotalKwh"),
+        rating_energy_rn=raw.get("ratingEnergyRN"),
+        benchmark_rating_energy_rn=raw.get("benchmarkRatingEnergyRN"),
+        water_m3=raw.get("waterM3"),
+        rating_water_rn=raw.get("ratingWaterRN"),
+        benchmark_rating_water_rn=raw.get("benchmarkRatingWaterRN"),
+        waste_kg=raw.get("wasteKg"),
+        rating_waste_rn=raw.get("ratingWasteRN"),
+        benchmark_rating_waste_rn=raw.get("benchmarkRatingWasteRN"),
+        scope1_emissions=raw.get("scope1Emissions"),
+        scope2_emissions=raw.get("scope2Emissions"),
+        scope3_emissions=raw.get("scope3Emissions"),
+        co2_emissions=raw.get("co2Emissions"),
+        rating_co2_rn=raw.get("ratingCO2RN"),
+        benchmark_rating_co2_rn=raw.get("benchmarkRatingCO2RN"),
+        created_at=now,
+        updated_at=now,
+    ))
+    return "created"
+
+
+def _upsert_metric(
+    session: Session,
+    hotel_uuid: UUID,
+    raw: dict,
+    now: datetime,
+) -> tuple[str, str]:
+    """Route a value record to the correct metric table by inspecting its keys."""
+    if _ENVIRONMENTAL_SENTINEL in raw:
+        action = _upsert_environmental_metric(session, hotel_uuid, raw, now)
+        return "environmental", action
+    action = _upsert_social_metric(session, hotel_uuid, raw, now)
+    return "social", action
 
 
 # ---------------------------------------------------------------------------
@@ -213,32 +257,36 @@ def get_bulk_data(
     session: Session = Depends(get_session),
 ) -> Any:
     """
-    Trigger endpoint that fetches hotel data from an external URL and persists
-    it locally. Hotels are upserted by (name, city); their nested measures are
-    upserted by (hotel_id, year). Returns a summary of the operations performed.
+    Fetches hotel data from an external URL and persists it.
+    Chains and hotels are upserted by UUID. Social metrics are upserted by UUID.
     """
     records = _fetch_external_data(str(body.url))
     logger.info("[/pull] Fetched %d records from %s", len(records), body.url)
 
     now = datetime.utcnow()
     summary: dict[str, int] = {
+        "chains_created": 0,
+        "chains_updated": 0,
         "hotels_created": 0,
         "hotels_updated": 0,
-        "measures_created": 0,
-        "measures_updated": 0,
-        "measures_skipped": 0,
+        "social_metrics_created": 0,
+        "social_metrics_updated": 0,
+        "environmental_metrics_created": 0,
+        "environmental_metrics_updated": 0,
     }
 
     for record in records:
+        chain_action = _upsert_chain(session, record, now)
+        if chain_action:
+            summary[f"chains_{chain_action}"] += 1
+
         hotel, hotel_action = _upsert_hotel(session, record, now)
         summary[f"hotels_{hotel_action}"] += 1
 
-        # Disable autoflush while iterating measures to avoid premature FK checks
-        # before the parent hotel row has been committed.
         with session.no_autoflush:
-            for raw_measure in record.get("measures", []):
-                measure_action = _upsert_measure(session, hotel, raw_measure, now)
-                summary[f"measures_{measure_action}"] += 1
+            for raw_metric in record.get("values", []):
+                metric_type, metric_action = _upsert_metric(session, hotel.uuid, raw_metric, now)
+                summary[f"{metric_type}_metrics_{metric_action}"] += 1
 
     session.commit()
     logger.info("[/pull] Done. Summary: %s", summary)
@@ -254,14 +302,10 @@ async def listen_to_changes(
     """
     Webhook endpoint that receives real-time metric updates and appends them
     to the metric_items table as immutable historical records.
-
-    The incoming `id` field is treated as an external hotel identifier and
-    stored as-is in hotel_id (no FK validation against the hotels table).
     """
     payload = await request.json()
     logger.info("[/push] Received payload: %s", payload)
 
-    # Parse ISO-8601 date string (e.g. "2026-02-23T00:00:00Z") to a date object
     last_measured_at: date = datetime.fromisoformat(
         payload["last_measured_at"].replace("Z", "+00:00")
     ).date()

@@ -2,10 +2,11 @@ from fastapi import FastAPI
 from app.db import create_db_and_tables
 from app.routers import items
 from app.models import (
+    Chain,
     Hotel,
-    HotelEventModel,
+    SocialMetric,
+    EnvironmentalMetric,
     Subscription,
-    HotelMeasure,
     MetricItem,
 )
 

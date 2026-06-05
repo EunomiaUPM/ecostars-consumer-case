@@ -1,24 +1,21 @@
-from datetime import date, datetime
+from datetime import datetime
 from typing import Optional
+from uuid import UUID
+
 from sqlmodel import SQLModel, Field
 
-class HotelBase(SQLModel):
-    name: Optional[str] = None
-    address: Optional[str] = None
-    city: Optional[str] = None
 
-class Hotel(HotelBase, table=True):
+class Hotel(SQLModel, table=True):
     __tablename__ = "hotels"
 
-    id: Optional[int] = Field(default=None, primary_key=True)
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-    deleted_at: Optional[datetime] = None
-
-class HotelCreate(HotelBase):
-    pass
-
-class HotelRead(HotelBase):
-    id: int
+    uuid: UUID = Field(primary_key=True)
+    name: str
+    lat: Optional[float] = None
+    lon: Optional[float] = None
+    chain_uuid: Optional[UUID] = Field(default=None, foreign_key="chains.uuid")
+    country_slug: Optional[str] = None
+    category_slug: Optional[str] = None
+    zip: Optional[str] = None
+    region: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
